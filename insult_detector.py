@@ -5,8 +5,19 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import cross_val_score
 from sklearn.pipeline import FeatureUnion, Pipeline
-from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import LogisticRegression, SGDClassifier
 import json
+
+import nltk
+
+stem = nltk.stem.snowball.RussianStemmer()
+
+def stemTokenizer(text):
+    tokens = []
+    words = nltk.tokenize.WordPunctTokenizer().tokenize(text)
+    for word in words:
+        tokens.append(stem.stem(word))
+    return tokens
 
 
 class InsultDetector:
@@ -15,14 +26,18 @@ class InsultDetector:
         """
         it is constructor. Place the initialization here. Do not place train of the model here.
         :return: None
-        """
+        """ 
+        word_vectorizer =   TfidfVectorizer( ngram_range=(1, 3), max_df=0.8, min_df=0.0, strip_accents='unicode', analyzer=stemTokenizer)
+
+        char_vectorizer =  TfidfVectorizer( analyzer='char_wb', max_df=0.5, min_df=0.0, ngram_range=(2, 4), strip_accents='unicode')
+
         estimators = [
-                      ('tfidf1', TfidfVectorizer( ngram_range=(1, 3), max_df=0.8, min_df=0.0, strip_accents='unicode' )),
-                      ('tfidf2', TfidfVectorizer( analyzer='char_wb', max_df=0.5, min_df=0.0, ngram_range=(2, 6), strip_accents='unicode' ))
+                      ('tfidf1', word_vectorizer),
+                      ('tfidf2', char_vectorizer)
                       ]
         combined = FeatureUnion(estimators)
         self.classifier = Pipeline([('vect', combined),
-                                        ('clf', SGDClassifier(n_jobs = 8)), ])
+                                    ('clf', SGDClassifier(class_weight='balanced', loss='log', alpha=0.000001,  n_jobs=8)), ])
 
     
 
@@ -86,9 +101,16 @@ class InsultDetector:
 
 if __name__ == "__main__":
     train_data = json.load(open("discussions_tpc_2015/modis/discussions.json", encoding="utf8"))
+    test_data = json.load(open("discussions_tpc_2015/students/discussions.json", encoding="utf8"))
 
     InD = InsultDetector()
-    print(InD.cross_val(train_data))
+    print(InD.cross_val(test_data))
+
+    #InD.train(train_data)
+    
+    #InD.classify(test_data[:1])
+    #print(test_data[0])
+
     
 
 
