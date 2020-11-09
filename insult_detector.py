@@ -3,10 +3,10 @@ __author__ = 'Anton Khandzhyan'
 import re
 
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_validate
 from sklearn.pipeline import FeatureUnion, Pipeline
-from sklearn.linear_model import LogisticRegression, SGDClassifier
-import json
+from sklearn.linear_model import SGDClassifier
+from sklearn import metrics
 
 import nltk
 
@@ -27,9 +27,9 @@ class InsultDetector:
         it is constructor. Place the initialization here. Do not place train of the model here.
         :return: None
         """ 
-        word_vectorizer =   TfidfVectorizer( ngram_range=(1, 3), max_df=0.8, min_df=0.0, strip_accents='unicode', analyzer=stemTokenizer)
+        word_vectorizer =   TfidfVectorizer( ngram_range=(1, 2), max_df=0.8, min_df=0.0, strip_accents='unicode', analyzer=stemTokenizer)
 
-        char_vectorizer =  TfidfVectorizer( analyzer='char_wb', max_df=0.5, min_df=0.0, ngram_range=(2, 4), strip_accents='unicode')
+        char_vectorizer =  TfidfVectorizer( analyzer='char_wb', max_df=0.5, min_df=0.0, ngram_range=(1, 5), strip_accents='unicode')
 
         estimators = [
                       ('tfidf1', word_vectorizer),
@@ -87,29 +87,40 @@ class InsultDetector:
             obj["insult"] = ins
 
         return unlabeled_discussions
-
-    def cross_val(self, labeled_discussions):
+    
+    def __split_corp_label(self, labeled_discussions):
         corpus = []
         labels = []
         for obj in self.__flatten(labeled_discussions):
             if "insult" in obj:
                 corpus.append(obj["text"])
-                labels.append(obj["insult"])  
-        f1 = cross_val_score(self.classifier, corpus, labels, cv = 3, scoring='f1')
-        print("F1-мера: ", f1.mean())
-        return f1
+                labels.append(obj["insult"])
+        
+        return corpus, labels
+            
 
-if __name__ == "__main__":
-    train_data = json.load(open("discussions_tpc_2015/modis/discussions.json", encoding="utf8"))
-    test_data = json.load(open("discussions_tpc_2015/students/discussions.json", encoding="utf8"))
+    def cross_val(self, labeled_discussions):
+        corpus, labels = self.__split_corp_label(labeled_discussions)
 
-    InD = InsultDetector()
-    print(InD.cross_val(test_data))
+        val = cross_validate(self.classifier, corpus, labels, cv = 3, scoring=['f1', 'precision', 'recall' ])
+        
+        print("F1: ", val['test_f1'].mean())
+        print("precision: ", val['test_precision'].mean())
+        print("recall: ", val['test_recall'].mean())
+        
+        return val
 
-    #InD.train(train_data)
-    
-    #InD.classify(test_data[:1])
-    #print(test_data[0])
+    def evaluate(self, train_discussions, test_discussions):
+        self.train(train_discussions)
+
+        corpus, labels_true = self.__split_corp_label(test_discussions)
+        labels_pred = self.classifier.predict(corpus)
+        report = metrics.classification_report(labels_true, labels_pred, digits = 4)
+        print(report)
+
+        return report
+
+
 
     
 
