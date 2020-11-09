@@ -7,6 +7,7 @@ from sklearn.model_selection import cross_validate
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.linear_model import SGDClassifier
 from sklearn import metrics
+import json
 
 import nltk
 
@@ -27,9 +28,9 @@ class InsultDetector:
         it is constructor. Place the initialization here. Do not place train of the model here.
         :return: None
         """ 
-        word_vectorizer =   TfidfVectorizer( ngram_range=(1, 2), max_df=0.8, min_df=0.0, strip_accents='unicode', analyzer=stemTokenizer)
+        word_vectorizer =   TfidfVectorizer( ngram_range=(1, 3), max_df=0.8, min_df=0.0, strip_accents='unicode', analyzer=stemTokenizer)
 
-        char_vectorizer =  TfidfVectorizer( analyzer='char_wb', max_df=0.5, min_df=0.0, ngram_range=(1, 5), strip_accents='unicode')
+        char_vectorizer =  TfidfVectorizer( analyzer='char_wb', max_df=0.5, min_df=0.0, ngram_range=(1, 8), strip_accents='unicode')
 
         estimators = [
                       ('tfidf1', word_vectorizer),
@@ -37,7 +38,7 @@ class InsultDetector:
                       ]
         combined = FeatureUnion(estimators)
         self.classifier = Pipeline([('vect', combined),
-                                    ('clf', SGDClassifier(class_weight='balanced', loss='log', alpha=0.000001,  n_jobs=8)), ])
+                                    ('clf', SGDClassifier(class_weight='balanced', loss='log', alpha=0.000001,  n_jobs=-1)), ])
 
     
 
@@ -56,6 +57,16 @@ class InsultDetector:
             if "children" in obj:
                 flat.extend(self.__flatten_child(obj["children"]))
         return flat
+    
+    def __split_corp_label(self, labeled_discussions):
+        corpus = []
+        labels = []
+        for obj in self.__flatten(labeled_discussions):
+            if "insult" in obj:
+                corpus.append(obj["text"])
+                labels.append(obj["insult"])
+        
+        return corpus, labels
 
     def train(self, labeled_discussions):
         """
@@ -63,12 +74,7 @@ class InsultDetector:
         :param discussions: the list of discussions. See description of the discussion in the manual.
         :return: None
         """
-        corpus = []
-        labels = []
-        for obj in self.__flatten(labeled_discussions):
-            if "insult" in obj:
-                corpus.append(obj["text"])
-                labels.append(obj["insult"])        
+        corpus, labels = self.__split_corp_label(labeled_discussions)        
                 
         self.classifier.fit(corpus, labels)
         print("Классификатор успешно натренирован")
@@ -88,21 +94,12 @@ class InsultDetector:
 
         return unlabeled_discussions
     
-    def __split_corp_label(self, labeled_discussions):
-        corpus = []
-        labels = []
-        for obj in self.__flatten(labeled_discussions):
-            if "insult" in obj:
-                corpus.append(obj["text"])
-                labels.append(obj["insult"])
-        
-        return corpus, labels
             
 
     def cross_val(self, labeled_discussions):
         corpus, labels = self.__split_corp_label(labeled_discussions)
 
-        val = cross_validate(self.classifier, corpus, labels, cv = 3, scoring=['f1', 'precision', 'recall' ])
+        val = cross_validate(self.classifier, corpus, labels,  scoring=['f1', 'precision', 'recall' ], n_jobs=-1)
         
         print("F1: ", val['test_f1'].mean())
         print("precision: ", val['test_precision'].mean())
@@ -121,6 +118,18 @@ class InsultDetector:
         return report
 
 
+if __name__ == "__main__":
+    test_data = json.load(open("discussions_tpc_2015/modis/discussions.json", encoding="utf8"))
+    train_data = json.load(open("discussions_tpc_2015/students/discussions.json", encoding="utf8"))
+
+    InD = InsultDetector()
+    print(InD.cross_val(test_data))
+    #InD.evaluate(train_data, test_data)
+
+    #InD.train(train_data)
+    
+    #InD.classify(test_data[:1])
+    #print(test_data[0])
 
     
 
